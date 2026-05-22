@@ -963,61 +963,45 @@ def combine_columns(
     separator: str = " ",
     output_column: str = "combined",
 ):
-    """Combine multiple columns into a single output column.
-
-    Parameters
-    ----------
-    frame : ArFrame or pd.DataFrame
-        Input data frame.
-    subset : list[str], optional
-        Columns to combine. If None, all columns are used.
-    separator : str
-        String used to separate values in the output column.
-    output_column : str
-        Name of the new column to store combined values.
-
-    Returns
-    -------
-    ArFrame or pd.DataFrame
-        Frame with the combined output column appended.
-    """
+    """Combine multiple columns into a single output column."""
     import pandas as pd
-
     from .convert import from_pandas, to_pandas
+    from .frame import ArFrame
 
     if not isinstance(separator, str):
         raise TypeError("separator must be a string")
     if not isinstance(output_column, str) or not output_column.strip():
         raise ValueError("output_column must be a non-empty string")
 
-    is_arframe = not isinstance(frame, pd.DataFrame)
+    is_arframe = isinstance(frame, ArFrame)
     df = to_pandas(frame) if is_arframe else frame.copy()
+    column_names = list(df.columns)
 
     if subset is None:
-        subset_columns = list(df.columns)
+        subset_columns = column_names
     else:
-        subset_columns = _validate_column_sequence(subset, argument_name="subset")
-        missing = [column for column in subset_columns if column not in df.columns]
+        subset_columns = list(subset)
+        missing = [c for c in subset_columns if c not in column_names]
         if missing:
-            available = ", ".join(df.columns) or "<none>"
+            available = ", ".join(column_names) or "<none>"
             raise KeyError(
-                f"Missing columns for combine_columns: {missing}. Available columns: {available}"
+                f"Missing columns for combine_columns: {missing}. "
+                f"Available columns: {available}"
             )
 
     if not subset_columns:
         raise ValueError("subset must contain at least one column")
 
-    if output_column in df.columns:
-
+    if output_column in column_names:
         raise ValueError(f"Output column '{output_column}' already exists.")
 
-    combined = (
-        df[subset_columns].astype("string").fillna("").agg(separator.join, axis=1)
-    )
-    null_mask = df[subset_columns].isna().all(axis=1)
-    combined = combined.mask(null_mask, pd.NA)
+    def _join_non_null(row):
+        parts = [str(v) for v in row if not pd.isna(v)]
+        if not parts:
+            return pd.NA
+        return separator.join(parts)
 
-    df = df.copy()
+    combined = df[subset_columns].apply(_join_non_null, axis=1)
     df[output_column] = combined
 
     return from_pandas(df) if is_arframe else df

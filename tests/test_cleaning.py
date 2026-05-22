@@ -1260,6 +1260,31 @@ class TestCombineColumns:
                 output_column="combined",
             )
 
+    def test_null_semantics_mixed_null_and_non_null_columns(self):
+        """Fixes #618 - mixed null and non-null input columns."""
+        import numpy as np
+
+        df = pd.DataFrame(
+            {
+                "col_a": ["Alpha", np.nan, "Gamma", None],
+                "col_b": ["Beta", "Delta", np.nan, None],
+            }
+        )
+        frame = ar.from_pandas(df)
+        result = ar.combine_columns(
+            frame,
+            subset=["col_a", "col_b"],
+            separator="-",
+            output_column="mixed_result",
+        )
+        result_df = ar.to_pandas(result)
+        assert "mixed_result" in result_df.columns
+        assert len(result_df) == 4
+        assert result_df["mixed_result"].iloc[0] == "Alpha-Beta"
+        assert result_df["mixed_result"].iloc[1] == "Delta"
+        assert result_df["mixed_result"].iloc[2] == "Gamma"
+        assert pd.isna(result_df["mixed_result"].iloc[3])
+
     def test_output_column_already_exists_warns(self):
         import pandas as pd
 
